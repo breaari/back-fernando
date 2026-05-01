@@ -1,0 +1,31 @@
+# Vendor dependencies
+vendor/
+
+# Environment variables
+config/env.php
+.env
+
+# Logs
+logs/
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+
+# Upload directories (backup originals)
+# public/uploads/
+
+# Cache
+*.cache

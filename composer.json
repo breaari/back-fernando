@@ -1,0 +1,13 @@
+{
+  "name": "fernando/inmobiliaria-back",
+  "description": "Backend PHP para proyecto inmobiliario",
+  "type": "project",
+  "require": {
+    "firebase/php-jwt": "^6.9"
+  },
+  "autoload": {
+    "psr-4": {
+      "App\\": "app/"
+    }
+  }
+}
