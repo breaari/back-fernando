@@ -1,52 +1,99 @@
 <?php
 
-require_once __DIR__ . '/../vendor/autoload.php';
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
 
-use App\Core\{Router, Request, Response};
+$autoloadPath = __DIR__ . '/../vendor/autoload.php';
 
-// Cargar configuración para CORS
-$config = require __DIR__ . '/../config/config.php';
-$origins = $config['cors']['origins'] ?? [];
-$requestOrigin = $_SERVER['HTTP_ORIGIN'] ?? '';
-
-// Determinar el origen permitido de forma segura
-$allowOrigin = '';
-if ($requestOrigin && in_array($requestOrigin, $origins, true)) {
-    // Solo permitir orígenes específicamente listados
-    $allowOrigin = $requestOrigin;
-} elseif (empty($origins)) {
-    // Si no hay orígenes configurados, denegar acceso
-    http_response_code(403);
-    echo json_encode(['error' => 'CORS not configured']);
+if (!file_exists($autoloadPath)) {
+    http_response_code(500);
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode([
+        'error' => 'Falta vendor/autoload.php',
+        'ruta_buscada' => $autoloadPath,
+    ]);
     exit;
 }
 
-// Configurar headers CORS solo si hay un origen válido
-if ($allowOrigin) {
-    header('Access-Control-Allow-Origin: ' . $allowOrigin);
+require_once $autoloadPath;
+
+use App\Core\{Router, Response};
+
+$configPath = __DIR__ . '/../config/config.php';
+
+if (!file_exists($configPath)) {
+    http_response_code(500);
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode([
+        'error' => 'Falta config/config.php',
+        'ruta_buscada' => $configPath,
+    ]);
+    exit;
+}
+
+$config = require $configPath;
+
+$origins = $config['cors']['origins'] ?? [];
+$requestOrigin = $_SERVER['HTTP_ORIGIN'] ?? '';
+
+if ($requestOrigin && in_array($requestOrigin, $origins, true)) {
+    header('Access-Control-Allow-Origin: ' . $requestOrigin);
+    header('Vary: Origin');
     header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, PATCH, OPTIONS');
     header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With');
     header('Access-Control-Allow-Credentials: true');
 }
+
 header('Content-Type: application/json; charset=utf-8');
 
-// Manejar preflight requests
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-    http_response_code(200);
+    http_response_code(204);
     exit;
 }
 
+/*
+|--------------------------------------------------------------------------
+| Normalizar URL para Hostinger / subcarpeta
+|--------------------------------------------------------------------------
+| Convierte:
+| /back-fernando/public/index.php/auth/login
+| /back-fernando/public/auth/login
+|
+| En:
+| /auth/login
+|--------------------------------------------------------------------------
+*/
+
+$requestUri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH) ?? '/';
+
+$basePaths = [
+    '/back-fernando/public/index.php',
+    '/back-fernando/public',
+];
+
+foreach ($basePaths as $basePath) {
+    if (str_starts_with($requestUri, $basePath)) {
+        $requestUri = substr($requestUri, strlen($basePath));
+        break;
+    }
+}
+
+$requestUri = '/' . ltrim($requestUri, '/');
+$requestUri = $requestUri === '/' ? '/' : rtrim($requestUri, '/');
+
+$_SERVER['REQUEST_URI'] = $requestUri;
+
 try {
-    // Crear router
     $router = new Router();
 
-    // ==================== AUTH ROUTES ====================
+    // AUTH
     $router->post('/auth/register', 'AuthController@register');
     $router->post('/auth/login', 'AuthController@login');
     $router->get('/auth/me', 'AuthController@me');
     $router->post('/auth/logout', 'AuthController@logout');
 
-    // ==================== PROPERTY ROUTES ====================
+    // PROPERTIES
     $router->get('/properties', 'PropertyController@index');
     $router->get('/properties/featured', 'PropertyController@featured');
     $router->get('/properties/my-properties', 'PropertyController@myProperties');
@@ -56,31 +103,31 @@ try {
     $router->put('/properties/{id}', 'PropertyController@update');
     $router->delete('/properties/{id}', 'PropertyController@delete');
 
-    // Property Amenities
+    // PROPERTY AMENITIES
     $router->post('/properties/{id}/amenities', 'PropertyController@addAmenity');
     $router->delete('/properties/{id}/amenities', 'PropertyController@removeAmenity');
 
-    // Property Tags
+    // PROPERTY TAGS
     $router->post('/properties/{id}/tags', 'PropertyController@addTag');
     $router->delete('/properties/{id}/tags', 'PropertyController@removeTag');
 
-    // ==================== PROPERTY IMAGE ROUTES ====================
+    // PROPERTY IMAGES
     $router->post('/properties/{id}/images', 'PropertyImageController@upload');
     $router->put('/properties/{id}/images/{imageId}/cover', 'PropertyImageController@setCover');
     $router->delete('/properties/{id}/images/{imageId}', 'PropertyImageController@delete');
     $router->post('/properties/{id}/images/reorder', 'PropertyImageController@reorder');
 
-    // ==================== INQUIRY ROUTES ====================
+    // INQUIRIES
     $router->get('/inquiries', 'InquiryController@getAll');
     $router->post('/inquiries', 'InquiryController@create');
     $router->get('/inquiries/{id}', 'InquiryController@show');
     $router->get('/properties/{id}/inquiries', 'InquiryController@getByProperty');
     $router->delete('/inquiries/{id}', 'InquiryController@delete');
 
-    // ==================== CONTACT ROUTES ====================
+    // CONTACT
     $router->post('/contact', 'ContactController@create');
 
-    // ==================== CATALOG ROUTES ====================
+    // CATALOG
     $router->get('/catalog/amenities', 'CatalogController@getAmenities');
     $router->get('/catalog/tags', 'CatalogController@getTags');
     $router->get('/catalog/provinces', 'CatalogController@getProvinces');
@@ -90,8 +137,14 @@ try {
     $router->get('/catalog/operation-types', 'CatalogController@getOperationTypes');
     $router->get('/catalog/market-statuses', 'CatalogController@getMarketStatuses');
 
-    // Dispatch the request
     $router->dispatch();
-} catch (Exception $e) {
-    Response::error('Server Error: ' . $e->getMessage(), 500);
+
+} catch (Throwable $e) {
+    http_response_code(500);
+    echo json_encode([
+        'error' => 'Server Error',
+        'message' => $e->getMessage(),
+        'file' => $e->getFile(),
+        'line' => $e->getLine(),
+    ]);
 }

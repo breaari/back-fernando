@@ -1,29 +1,23 @@
 <?php
-require __DIR__ . '/vendor/autoload.php';
 
-use App\Core\Database;
-use App\Core\Response;
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
+
+$config = require __DIR__ . '/config/config.php';
+$db = $config['database'];
 
 try {
-    echo "Testing database connection...\n";
-    $db = Database::getInstance()->getConnection();
-    echo "✓ Database connected\n\n";
-    
-    echo "Testing property_types table...\n";
-    $stmt = $db->prepare('SELECT * FROM property_types WHERE active = 1');
-    $stmt->execute();
-    $types = $stmt->fetchAll();
-    echo "✓ Found " . count($types) . " property types\n";
-    print_r($types);
-    
-    echo "\nTesting operation_types table...\n";
-    $stmt = $db->prepare('SELECT * FROM operation_types WHERE active = 1');
-    $stmt->execute();
-    $ops = $stmt->fetchAll();
-    echo "✓ Found " . count($ops) . " operation types\n";
-    print_r($ops);
-    
-} catch (Exception $e) {
-    echo "✗ Error: " . $e->getMessage() . "\n";
-    echo "Stack trace:\n" . $e->getTraceAsString() . "\n";
+    $pdo = new PDO(
+        "mysql:host={$db['host']};port={$db['port']};dbname={$db['name']};charset={$db['charset']}",
+        $db['user'],
+        $db['password'],
+        [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+        ]
+    );
+
+    echo "Conexión OK";
+} catch (PDOException $e) {
+    echo "Error DB: " . $e->getMessage();
 }
